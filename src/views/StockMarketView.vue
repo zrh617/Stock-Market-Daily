@@ -178,6 +178,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import TabBar from '@/components/TabBar.vue'
 import EventCalendar from '@/components/EventCalendar.vue'
 import StockChart from '@/components/StockChart.vue'
@@ -185,7 +186,9 @@ import AIStockPrediction from '@/components/AIStockPrediction.vue'
 import { stockMarketAPI } from '@/services/stockMarketAPI'
 import type { MarketStats, SectorPerformance, MarketEvent } from '@/services/stockMarketAPI'
 
-const activeTab = ref<string>('us')
+const router = useRouter()
+const route = useRoute()
+const activeTab = ref<string>((route.params.market as string) || 'us')
 
 const marketStats = ref<MarketStats>({
   total: 0,
@@ -229,6 +232,13 @@ const getCurrentTabName = () => {
 }
 
 const handleTabChange = async (tabId: string) => {
+  // 如果切换到基金情报，跳转到基金页面
+  if (tabId === 'fund') {
+    router.push('/fund')
+    return
+  }
+  
+  // 其他市场标签切换
   activeTab.value = tabId
   await loadMarketData()
 }

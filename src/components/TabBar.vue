@@ -76,7 +76,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 interface Tab {
   id: string
@@ -87,9 +88,25 @@ const tabs: Tab[] = [
   { id: 'us', name: '美股情报' },
   { id: 'cn', name: 'A股情报' },
   { id: 'hk', name: '港股情报' },
+  { id: 'fund', name: '基金情报' },
 ]
 
+const route = useRoute()
 const activeTab = ref<string>('us')
+
+// 根据路由更新激活标签
+const updateActiveTabFromRoute = () => {
+  const path = route.path
+  if (path === '/fund') {
+    activeTab.value = 'fund'
+  } else if (path.startsWith('/cn')) {
+    activeTab.value = 'cn'
+  } else if (path.startsWith('/hk')) {
+    activeTab.value = 'hk'
+  } else {
+    activeTab.value = 'us'
+  }
+}
 
 const setActiveTab = (tabId: string) => {
   activeTab.value = tabId
@@ -101,6 +118,18 @@ const toggleTheme = () => {
   // 主题切换逻辑
   console.log('切换主题')
 }
+
+// 监听路由变化
+watch(
+  () => route.path,
+  () => {
+    updateActiveTabFromRoute()
+  }
+)
+
+onMounted(() => {
+  updateActiveTabFromRoute()
+})
 
 const emit = defineEmits<{
   'tab-change': [tabId: string]
