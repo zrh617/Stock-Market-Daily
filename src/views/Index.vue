@@ -1,218 +1,282 @@
 <template>
-  <div class="h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-dark-900 overflow-hidden">
+  <div class="cyberpunk-container">
+    <!-- 星空背景 -->
+    <div class="stars-background"></div>
+
     <!-- 主内容区域 -->
-    <div class="h-full flex flex-col">
+    <div class="h-full flex flex-col relative z-10">
       <div
         class="w-full h-full px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1 flex flex-col min-h-0 overflow-hidden"
       >
         <!-- 页面标题 -->
         <div class="mb-4 sm:mb-6 animate-fade-in flex-shrink-0">
           <div class="flex items-center justify-between mb-2">
-            <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-100">基金实时监控</h1>
+            <h1 class="cyberpunk-title">基金估值助手</h1>
             <!-- 数据源选择 -->
             <div class="flex items-center gap-2">
-              <span class="text-sm text-gray-400 hidden sm:inline">数据源：</span>
-              <select
+              <span class="text-sm text-cyan-400 hidden sm:inline">数据源：</span>
+              <el-select
                 v-model="dataSource"
                 @change="onDataSourceChange"
-                class="px-3 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                class="cyberpunk-select"
+                size="small"
               >
-                <option value="eastmoney">天天基金</option>
-                <option value="sina">新浪财经</option>
-                <option value="danjuan">雪球/蛋卷</option>
-                <option value="tonghuashun">同花顺/爱基金</option>
-              </select>
+                <el-option label="天天基金" value="eastmoney" />
+                <el-option label="新浪财经" value="sina" />
+                <el-option label="雪球/蛋卷" value="danjuan" />
+                <el-option label="同花顺/爱基金" value="tonghuashun" />
+              </el-select>
             </div>
           </div>
         </div>
 
         <!-- 添加基金输入框 -->
         <div class="mb-4 flex gap-3 items-center flex-shrink-0">
-          <input
+          <el-input
             v-model="fundCodeInput"
-            @keypress.enter="addFund"
-            type="text"
+            @keyup.enter="addFund"
             placeholder="输入基金代码（如：000001）"
-            class="flex-1 px-4 py-2 bg-dark-700 border border-dark-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+            class="cyberpunk-input flex-1"
+            clearable
           />
-          <button
-            @click="addFund"
-            class="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-semibold"
-          >
+          <el-button @click="addFund" type="primary" class="cyberpunk-btn-add" :icon="Plus">
             添加基金
-          </button>
+          </el-button>
         </div>
 
         <!-- 刷新按钮 -->
-        <button
+        <el-button
           @click="fetchAllFunds"
-          :disabled="isLoading"
-          class="w-full mb-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+          :loading="isLoading"
+          type="primary"
+          class="w-full mb-4 cyberpunk-btn-refresh"
+          :icon="Refresh"
         >
           {{ isLoading ? '加载中...' : '手动刷新数据' }}
-        </button>
+        </el-button>
 
-        <!-- 仓位标签栏 -->
+        <!-- 内容切换Tab -->
         <div class="mb-4 flex-shrink-0">
+          <el-tabs v-model="activeContentTab" @tab-change="switchContentTab" class="cyberpunk-tabs">
+            <el-tab-pane label="基金监控" name="monitor" />
+            <el-tab-pane label="每日加仓榜" name="hotrank" />
+          </el-tabs>
+        </div>
+
+        <!-- 仓位标签栏（仅在基金监控时显示） -->
+        <div v-if="activeContentTab === 'monitor'" class="mb-4 flex-shrink-0">
           <div class="flex items-center gap-2 overflow-x-auto pb-2">
-            <div
+            <el-tag
               v-for="portfolio in portfolios"
               :key="portfolio.id"
               @click="switchPortfolio(portfolio.id)"
+              :type="currentPortfolioId === portfolio.id ? 'success' : 'info'"
               :class="[
-                'px-4 py-2 rounded-lg cursor-pointer transition-all whitespace-nowrap flex items-center gap-2',
-                currentPortfolioId === portfolio.id
-                  ? 'bg-green-500 text-white shadow-lg'
-                  : 'bg-dark-700 text-gray-300 hover:bg-dark-600',
+                'cyberpunk-portfolio-tag cursor-pointer',
+                currentPortfolioId === portfolio.id ? 'cyberpunk-tag-active' : '',
               ]"
+              effect="dark"
+              :closable="portfolios.length > 1 && portfolio.id !== 'default'"
+              @close="deletePortfolio(portfolio.id)"
             >
-              <span>{{ portfolio.name }}</span>
+              {{ portfolio.name }}
               <span
                 v-if="portfolio.fundList.length > 0"
-                class="px-2 py-0.5 rounded-full text-xs"
+                class="ml-2 px-2 py-0.5 rounded-full text-xs"
                 :class="currentPortfolioId === portfolio.id ? 'bg-white/20' : 'bg-dark-600'"
               >
                 {{ portfolio.fundList.length }}
               </span>
-              <button
-                v-if="portfolios.length > 1 && portfolio.id !== 'default'"
-                @click.stop="deletePortfolio(portfolio.id)"
-                class="ml-1 p-0.5 rounded hover:bg-white/20 transition-colors"
-                title="删除仓位"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M6 18L18 6M6 6l12 12"
-                  ></path>
-                </svg>
-              </button>
-            </div>
+            </el-tag>
             <!-- 新建仓位按钮 -->
-            <button
+            <el-button
               @click="showCreatePortfolioDialog = true"
-              class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:bg-dark-600 transition-colors whitespace-nowrap flex items-center gap-2"
-              title="新建仓位"
+              type="primary"
+              :icon="Plus"
+              class="cyberpunk-btn-add-portfolio"
+              size="small"
             >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M12 4v16m8-8H4"
-                ></path>
-              </svg>
-              <span>新建仓位</span>
-            </button>
+              新建仓位
+            </el-button>
           </div>
         </div>
 
         <!-- 新建仓位对话框 -->
-        <div
-          v-if="showCreatePortfolioDialog"
-          class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          @click.self="showCreatePortfolioDialog = false"
+        <el-dialog
+          v-model="showCreatePortfolioDialog"
+          title="新建仓位"
+          width="400px"
+          class="cyberpunk-dialog"
         >
-          <div class="bg-dark-800 rounded-lg p-6 w-full max-w-md mx-4 border border-dark-600">
-            <h3 class="text-xl font-bold text-gray-100 mb-4">新建仓位</h3>
-            <input
-              v-model="newPortfolioName"
-              @keypress.enter="createPortfolio"
-              type="text"
-              placeholder="输入仓位名称（如：模拟仓、保本仓）"
-              class="w-full px-4 py-2 bg-dark-700 border border-dark-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 mb-4"
-            />
+          <el-input
+            v-model="newPortfolioName"
+            @keyup.enter="createPortfolio"
+            placeholder="输入仓位名称（如：模拟仓、保本仓）"
+            class="cyberpunk-input mb-4"
+            clearable
+          />
+          <template #footer>
             <div class="flex gap-3 justify-end">
-              <button
-                @click="showCreatePortfolioDialog = false"
-                class="px-4 py-2 bg-dark-700 hover:bg-dark-600 text-gray-300 rounded-lg transition-colors"
-              >
+              <el-button @click="showCreatePortfolioDialog = false" class="cyberpunk-btn-cancel">
                 取消
-              </button>
-              <button
-                @click="createPortfolio"
-                class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
-              >
+              </el-button>
+              <el-button type="primary" @click="createPortfolio" class="cyberpunk-btn-confirm">
                 创建
-              </button>
+              </el-button>
             </div>
-          </div>
-        </div>
+          </template>
+        </el-dialog>
 
-        <!-- 基金列表表格 -->
-        <div class="flex-1 overflow-y-auto min-h-0">
-          <table class="w-full border-collapse">
-            <thead class="sticky top-0 bg-dark-800 z-10">
-              <tr>
-                <th
-                  class="px-4 py-3 text-left text-sm font-semibold text-gray-300 border-b border-dark-600"
-                >
-                  基金名称
-                </th>
-                <th
-                  class="px-4 py-3 text-left text-sm font-semibold text-gray-300 border-b border-dark-600"
-                >
-                  最新估值
-                </th>
-                <th
-                  class="px-4 py-3 text-left text-sm font-semibold text-gray-300 border-b border-dark-600"
-                >
-                  当日涨跌幅
-                </th>
-                <th
-                  class="px-4 py-3 text-left text-sm font-semibold text-gray-300 border-b border-dark-600"
-                >
-                  更新时间
-                </th>
-                <th
-                  class="px-4 py-3 text-left text-sm font-semibold text-gray-300 border-b border-dark-600"
-                >
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="isLoading && funds.length === 0">
-                <td colspan="5" class="px-4 py-8 text-center text-gray-400">加载中...</td>
-              </tr>
-              <tr v-else-if="funds.length === 0">
-                <td colspan="5" class="px-4 py-8 text-center text-gray-400">
-                  暂无基金数据，请添加基金代码
-                </td>
-              </tr>
-              <tr
-                v-for="fund in funds"
-                :key="fund.code"
-                class="border-b border-dark-600/50 hover:bg-dark-700/50 transition-colors"
-              >
-                <td class="px-4 py-3 text-gray-100">
-                  <strong>{{ fund.name }}</strong>
-                  <span class="text-gray-400 text-sm ml-2">({{ fund.code }})</span>
-                </td>
-                <td class="px-4 py-3 text-gray-200">{{ fund.estimatedValue }}</td>
-                <td
+        <!-- 基金监控内容 -->
+        <div
+          v-if="activeContentTab === 'monitor'"
+          class="flex-1 overflow-y-auto min-h-0"
+          key="monitor"
+        >
+          <el-table
+            :data="funds"
+            v-loading="isLoading && funds.length === 0"
+            empty-text="暂无基金数据，请添加基金代码"
+            class="cyberpunk-table"
+            stripe
+            :header-cell-style="{
+              background: 'rgba(0, 0, 0, 0.3)',
+              color: '#00ffff',
+              borderColor: '#00ffff',
+            }"
+            :cell-style="{
+              background: 'rgba(0, 0, 0, 0.2)',
+              color: '#ffffff',
+              borderColor: 'rgba(0, 255, 255, 0.3)',
+            }"
+          >
+            <el-table-column prop="name" label="基金名称" min-width="150">
+              <template #default="{ row }">
+                <div>
+                  <strong class="text-cyan-300">{{ row.name }}</strong>
+                  <span class="text-gray-400 text-sm ml-2">({{ row.code }})</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="estimatedValue" label="最新估值" width="120" />
+            <el-table-column prop="changePercent" label="当日涨跌幅" width="120">
+              <template #default="{ row }">
+                <span
                   :class="[
-                    'px-4 py-3 font-bold',
-                    fund.changePercent >= 0 ? 'text-red-400' : 'text-green-400',
+                    'font-bold text-lg',
+                    row.changePercent >= 0 ? 'text-red-400' : 'text-green-400',
                   ]"
                 >
-                  {{ fund.changePercent >= 0 ? '+' : '' }}{{ fund.changePercent }}%
-                </td>
-                <td class="px-4 py-3 text-gray-400 text-sm">{{ fund.updateTime }}</td>
-                <td class="px-4 py-3">
-                  <button
-                    @click="removeFund(fund.code)"
-                    class="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors text-sm font-medium"
-                    title="删除基金"
+                  {{ row.changePercent >= 0 ? '+' : '' }}{{ row.changePercent }}%
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="updateTime" label="更新时间" width="180" />
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  @click="removeFund(row.code)"
+                  type="danger"
+                  size="small"
+                  :icon="Delete"
+                  class="cyberpunk-btn-delete"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <!-- 每日加仓榜内容 -->
+        <div v-if="activeContentTab === 'hotrank'" class="flex-1 overflow-y-auto min-h-0">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="cyberpunk-subtitle">今日人气加仓榜</h2>
+            <el-button
+              @click="fetchHotRank"
+              :loading="isLoadingHotRank"
+              type="primary"
+              :icon="Refresh"
+              class="cyberpunk-btn-refresh"
+            >
+              刷新
+            </el-button>
+          </div>
+
+          <!-- 加仓榜列表 -->
+          <el-empty
+            v-if="!isLoadingHotRank && hotRankList.length === 0"
+            description="暂无加仓榜数据"
+            :image-size="100"
+          >
+            <el-button type="primary" @click="fetchHotRank" class="cyberpunk-btn-refresh">
+              点击刷新
+            </el-button>
+          </el-empty>
+
+          <div v-else-if="hotRankList.length > 0" class="space-y-3">
+            <el-card
+              v-for="(fund, index) in hotRankList"
+              :key="fund.code"
+              class="cyberpunk-card"
+              shadow="hover"
+            >
+              <div class="flex items-start justify-between">
+                <div class="flex items-start gap-3 flex-1">
+                  <!-- 排名 -->
+                  <div
+                    class="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 cyberpunk-rank-circle"
+                    :class="index < 3 ? 'cyberpunk-rank-top' : 'cyberpunk-rank-normal'"
                   >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                    {{ fund.rank }}
+                  </div>
+
+                  <!-- 基金信息 -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-2">
+                      <h3 class="text-lg font-semibold text-cyan-300 truncate">{{ fund.name }}</h3>
+                      <el-tag size="small" type="info" effect="dark">{{ fund.code }}</el-tag>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm">
+                      <div>
+                        <span class="text-gray-400">热度值：</span>
+                        <span class="text-cyan-400 font-medium">{{ fund.hotValue }}</span>
+                      </div>
+                      <div>
+                        <span class="text-gray-400">排名变动：</span>
+                        <el-tag
+                          :type="
+                            fund.rankChange > 0
+                              ? 'success'
+                              : fund.rankChange < 0
+                              ? 'danger'
+                              : 'info'
+                          "
+                          size="small"
+                          effect="dark"
+                        >
+                          {{ fund.rankChange > 0 ? '+' : '' }}{{ fund.rankChange }}
+                        </el-tag>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 涨跌幅 -->
+                  <div class="text-right flex-shrink-0">
+                    <div
+                      :class="[
+                        'text-2xl font-bold cyberpunk-change-percent',
+                        fund.changePercent >= 0 ? 'text-red-400' : 'text-green-400',
+                      ]"
+                    >
+                      {{ fund.changePercent >= 0 ? '+' : '' }}{{ fund.changePercent }}%
+                    </div>
+                    <div class="text-sm text-gray-400 mt-1">实时估值</div>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </div>
         </div>
       </div>
     </div>
@@ -222,6 +286,7 @@
   <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Plus, Refresh, Delete } from '@element-plus/icons-vue'
 
 // 扩展Window接口以支持jsonpgz回调
 declare global {
@@ -232,6 +297,10 @@ declare global {
 
 const router = useRouter()
 const activeTab = ref<string>('fund')
+
+// 内容切换Tab（基金监控/加仓榜）
+type ContentTab = 'monitor' | 'hotrank'
+const activeContentTab = ref<ContentTab>('monitor')
 
 // 数据源选择
 const dataSource = ref<string>('eastmoney')
@@ -286,6 +355,19 @@ interface FundData {
 }
 
 const funds = ref<FundData[]>([])
+
+// 加仓榜数据
+interface HotRankFund {
+  code: string
+  name: string
+  rank: number
+  hotValue: number
+  rankChange: number
+  changePercent: number
+}
+
+const hotRankList = ref<HotRankFund[]>([])
+const isLoadingHotRank = ref<boolean>(false)
 
 // 定时器
 let refreshInterval: ReturnType<typeof setInterval> | null = null
@@ -885,6 +967,52 @@ const stopAutoRefresh = () => {
   }
 }
 
+// 切换内容Tab
+const switchContentTab = (tab: string) => {
+  activeContentTab.value = tab as ContentTab
+  // 切换到加仓榜时，自动加载数据
+  if (tab === 'hotrank' && hotRankList.value.length === 0) {
+    fetchHotRank()
+  }
+}
+
+// 获取每日加仓榜
+const fetchHotRank = async () => {
+  isLoadingHotRank.value = true
+  hotRankList.value = []
+
+  try {
+    // 使用 cors-anywhere 或者你自己的代理服务器
+    const proxy = 'https://api.allorigins.win/get?url='
+    const targetUrl = encodeURIComponent(
+      'https://fundmobapi.eastmoney.com/FundMapi/FundPopularityList.ashx?pageIndex=1&pageSize=20&appType=ttjj'
+    )
+
+    const response = await fetch(proxy + targetUrl)
+    const rawData = await response.json()
+    const data = JSON.parse(rawData.contents) // 解析代理返回的字符串内容
+
+    if (data.Datas && Array.isArray(data.Datas)) {
+      hotRankList.value = data.Datas.map((fund: any, index: number) => ({
+        code: fund.FCODE || fund.code || '',
+        name: fund.SHORTNAME || fund.name || `基金${fund.FCODE || ''}`,
+        rank: fund.DQ_RANK || index + 1,
+        hotValue: fund.HOTVALUE || 0,
+        rankChange: fund.RANKCHANGE || 0,
+        changePercent: parseFloat(fund.GSZZL || '0'),
+      }))
+    } else {
+      console.warn('加仓榜数据格式错误:', data)
+    }
+  } catch (error) {
+    console.error('人气榜加载失败:', error)
+    // 如果API失败，可以显示一些模拟数据
+    hotRankList.value = []
+  } finally {
+    isLoadingHotRank.value = false
+  }
+}
+
 onMounted(() => {
   // 从localStorage恢复仓位列表
   loadPortfoliosFromStorage()
@@ -892,6 +1020,10 @@ onMounted(() => {
   loadDataSourceFromStorage()
   // 加载基金数据
   fetchAllFunds()
+  // 如果当前在加仓榜Tab，加载加仓榜数据
+  if (activeContentTab.value === 'hotrank') {
+    fetchHotRank()
+  }
   // 启动自动刷新
   startAutoRefresh()
 })
@@ -903,23 +1035,344 @@ onUnmounted(() => {
 </script>
   
   <style scoped>
+/* 赛博朋克风格容器 */
+.cyberpunk-container {
+  position: relative;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1a2e 50%, #16213e 100%);
+  overflow: hidden;
+}
+
+/* 星空背景 */
+.stars-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(2px 2px at 20% 30%, white, transparent),
+    radial-gradient(2px 2px at 60% 70%, white, transparent),
+    radial-gradient(1px 1px at 50% 50%, white, transparent),
+    radial-gradient(1px 1px at 80% 10%, white, transparent),
+    radial-gradient(2px 2px at 90% 40%, white, transparent),
+    radial-gradient(1px 1px at 33% 60%, white, transparent),
+    radial-gradient(2px 2px at 55% 80%, white, transparent);
+  background-repeat: repeat;
+  background-size: 200% 200%;
+  animation: stars 20s linear infinite;
+  opacity: 0.6;
+  z-index: 0;
+}
+
+@keyframes stars {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-200px);
+  }
+}
+
+/* 赛博朋克标题 */
+.cyberpunk-title {
+  font-size: 2rem;
+  font-weight: bold;
+  background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 3s linear infinite;
+  text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.cyberpunk-subtitle {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #00ffff;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* Element Plus 组件样式覆盖 */
+:deep(.cyberpunk-select .el-input__wrapper) {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #00ffff;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+
+:deep(.cyberpunk-select .el-input__inner) {
+  color: #00ffff;
+}
+
+:deep(.cyberpunk-select:hover .el-input__wrapper) {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-input .el-input__wrapper) {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #00ffff;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+
+:deep(.cyberpunk-input .el-input__inner) {
+  color: #ffffff;
+}
+
+:deep(.cyberpunk-input .el-input__inner::placeholder) {
+  color: rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-input:hover .el-input__wrapper) {
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-input.is-focus .el-input__wrapper) {
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.8);
+}
+
+/* 按钮样式 */
+.cyberpunk-btn-add,
+.cyberpunk-btn-refresh,
+.cyberpunk-btn-add-portfolio {
+  background: linear-gradient(135deg, #00ffff, #0080ff);
+  border: 1px solid #00ffff;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+  color: #000;
+  font-weight: bold;
+  transition: all 0.3s;
+}
+
+.cyberpunk-btn-add:hover,
+.cyberpunk-btn-refresh:hover,
+.cyberpunk-btn-add-portfolio:hover {
+  background: linear-gradient(135deg, #00ffff, #00ccff);
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+.cyberpunk-btn-delete {
+  background: rgba(255, 0, 0, 0.2);
+  border: 1px solid #ff0066;
+  color: #ff0066;
+  box-shadow: 0 0 10px rgba(255, 0, 102, 0.3);
+}
+
+.cyberpunk-btn-delete:hover {
+  background: rgba(255, 0, 0, 0.3);
+  box-shadow: 0 0 15px rgba(255, 0, 102, 0.5);
+}
+
+.cyberpunk-btn-cancel {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #666;
+  color: #ccc;
+}
+
+.cyberpunk-btn-confirm {
+  background: linear-gradient(135deg, #00ffff, #0080ff);
+  border: 1px solid #00ffff;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+/* Tabs样式 */
+:deep(.cyberpunk-tabs .el-tabs__header) {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #00ffff;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+:deep(.cyberpunk-tabs .el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+:deep(.cyberpunk-tabs .el-tabs__item) {
+  color: rgba(0, 255, 255, 0.7);
+  border: none;
+}
+
+:deep(.cyberpunk-tabs .el-tabs__item.is-active) {
+  color: #000;
+  background: linear-gradient(135deg, #00ffff, #0080ff);
+  border-radius: 6px;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-tabs .el-tabs__active-bar) {
+  display: none;
+}
+
+/* 仓位标签 */
+.cyberpunk-portfolio-tag {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(0, 255, 255, 0.5);
+  color: rgba(0, 255, 255, 0.8);
+  transition: all 0.3s;
+}
+
+.cyberpunk-tag-active {
+  background: linear-gradient(135deg, #00ffff, #0080ff);
+  border-color: #00ffff;
+  color: #000;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+.cyberpunk-portfolio-tag:hover {
+  border-color: #00ffff;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+/* 对话框样式 */
+:deep(.cyberpunk-dialog .el-dialog) {
+  background: linear-gradient(135deg, rgba(10, 14, 39, 0.95), rgba(26, 26, 46, 0.95));
+  border: 2px solid #00ffff;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-dialog .el-dialog__header) {
+  border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+:deep(.cyberpunk-dialog .el-dialog__title) {
+  color: #00ffff;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.cyberpunk-dialog .el-dialog__body) {
+  color: #ffffff;
+}
+
+/* 表格样式 */
+:deep(.cyberpunk-table .el-table) {
+  background: transparent;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+:deep(.cyberpunk-table .el-table__header-wrapper) {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+:deep(.cyberpunk-table .el-table__body-wrapper) {
+  background: transparent;
+}
+
+:deep(.cyberpunk-table .el-table__row) {
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+:deep(.cyberpunk-table .el-table__row:hover) {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+}
+
+:deep(.cyberpunk-table .el-loading-mask) {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+:deep(.cyberpunk-table .el-loading-spinner) {
+  color: #00ffff;
+}
+
+/* 卡片样式 */
+.cyberpunk-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+  transition: all 0.3s;
+}
+
+.cyberpunk-card:hover {
+  border-color: #00ffff;
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.5);
+  transform: translateY(-2px);
+}
+
+:deep(.cyberpunk-card .el-card__body) {
+  padding: 16px;
+}
+
+/* 排名徽章 */
+.cyberpunk-rank-circle {
+  border: 2px solid;
+  transition: all 0.3s;
+}
+
+.cyberpunk-rank-top {
+  background: linear-gradient(135deg, #ffd700, #ff8c00);
+  border-color: #ffd700;
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+  color: #000;
+}
+
+.cyberpunk-rank-normal {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: rgba(0, 255, 255, 0.5);
+  color: rgba(0, 255, 255, 0.8);
+}
+
+.cyberpunk-change-percent {
+  text-shadow: 0 0 10px currentColor;
+}
+
 /* 自定义滚动条样式 */
 .overflow-y-auto::-webkit-scrollbar {
   width: 8px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-track {
-  background: rgba(31, 41, 55, 0.5);
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background: rgba(75, 85, 99, 0.5);
+  background: rgba(0, 255, 255, 0.5);
   border-radius: 4px;
+  box-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-  background: rgba(107, 114, 128, 0.7);
+  background: rgba(0, 255, 255, 0.7);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+}
+
+/* Element Plus 下拉菜单样式 */
+:deep(.el-select-dropdown) {
+  background: rgba(10, 14, 39, 0.95);
+  border: 1px solid #00ffff;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item) {
+  color: rgba(0, 255, 255, 0.8);
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item:hover) {
+  background: rgba(0, 255, 255, 0.2);
+  color: #00ffff;
+}
+
+:deep(.el-select-dropdown .el-select-dropdown__item.selected) {
+  background: rgba(0, 255, 255, 0.3);
+  color: #00ffff;
+}
+
+/* Element Plus 空状态样式 */
+:deep(.el-empty) {
+  color: rgba(0, 255, 255, 0.7);
+}
+
+:deep(.el-empty__description) {
+  color: rgba(0, 255, 255, 0.7);
 }
 </style>
   
